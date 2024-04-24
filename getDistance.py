@@ -168,7 +168,7 @@ if __name__ == "__main__":
 
     # 写入CSV文件
 
-    #with open("C://Users//zpwang//Desktop//0_master//Emnets//可信泛在互联//timeChain//distances.csv", 'w', newline='') as file:
+    # with open("C://Users//zpwang//Desktop//0_master//Emnets//可信泛在互联//timeChain//distances.csv", 'w', newline='') as file:
     #    writer = csv.writer(file)
     #    writer.writerow(['Domain', 'IP Address', 'Distance (km)'])
     #    writer.writerows(results)
