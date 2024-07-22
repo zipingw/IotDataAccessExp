@@ -3,6 +3,7 @@ import pandas as pd
 import random
 import copy
 import networkx as nx
+from pyparsing import results
 from scipy.stats import truncnorm
 import math
 import matplotlib.pyplot as plt
@@ -12,12 +13,12 @@ import time as time_module
 
 
 def load_dataset():
-    rf_path = "./rt-ifttt/rt-ifttt.csv"
+    rf_path = "../rt-ifttt/rt-ifttt.csv"
     rf_data = pd.read_csv(rf_path)
-    weather_humidity_path = "./Historical Hourly Weather Data 2012-2017/humidity.csv"
-    weather_pressure_path = "./Historical Hourly Weather Data 2012-2017/pressure.csv"
-    weather_temperature_path = "./Historical Hourly Weather Data 2012-2017/temperature.csv"
-    weather_wind_speed_path = "./Historical Hourly Weather Data 2012-2017/wind_speed.csv"
+    weather_humidity_path = "../Historical Hourly Weather Data 2012-2017/humidity.csv"
+    weather_pressure_path = "../Historical Hourly Weather Data 2012-2017/pressure.csv"
+    weather_temperature_path = "../Historical Hourly Weather Data 2012-2017/temperature.csv"
+    weather_wind_speed_path = "../Historical Hourly Weather Data 2012-2017/wind_speed.csv"
     weather_humidity_data = pd.read_csv(weather_humidity_path)
     weather_pressure_data = pd.read_csv(weather_pressure_path)
     weather_temperature_data = pd.read_csv(weather_temperature_path)
@@ -29,12 +30,12 @@ def load_dataset():
             if dataset[col_name].isnull().any():
                 # 用平均值填充
                 dataset.fillna({col_name: int(dataset[col_name].mean())}, inplace=True)
-    bridge_21416_DPM_path = "./2021-04-16/2021-04-16 00-DPM.csv"
-    bridge_21416_HPT_path = "./2021-04-16/2021-04-16 00-HPT.csv"
-    bridge_21416_RHS_path = "./2021-04-16/2021-04-16 00-RHS.csv"
-    bridge_21416_ULT_path = "./2021-04-16/2021-04-16 00-ULT.csv"
-    bridge_21416_VIB_path = "./2021-04-16/2021-04-16 00-VIB.csv"
-    bridge_21416_VIC_path = "./2021-04-16/2021-04-16 00-VIC.csv"
+    bridge_21416_DPM_path = "../2021-04-16/2021-04-16 00-DPM.csv"
+    bridge_21416_HPT_path = "../2021-04-16/2021-04-16 00-HPT.csv"
+    bridge_21416_RHS_path = "../2021-04-16/2021-04-16 00-RHS.csv"
+    bridge_21416_ULT_path = "../2021-04-16/2021-04-16 00-ULT.csv"
+    bridge_21416_VIB_path = "../2021-04-16/2021-04-16 00-VIB.csv"
+    bridge_21416_VIC_path = "../2021-04-16/2021-04-16 00-VIC.csv"
     bridge_21416_DPM_data = pd.read_csv(bridge_21416_DPM_path)
     bridge_21416_HPT_data = pd.read_csv(bridge_21416_HPT_path)
     bridge_21416_RHS_data = pd.read_csv(bridge_21416_RHS_path)
@@ -57,14 +58,14 @@ def load_dataset():
     return data_aggregated
 
 
-def storage_node_generate():
+def storage_node_generate(store_node_num_input):
     # 模拟存储节点
     # 每个store_node 包含3个信息，distance|storage space|reputation, 并计算得到一个score
-    store_node_num = 50
+    store_node_num = store_node_num_input
     store_node = {i: {'distance': 0, 'storage space': 0, 'probability': 0, 'score_sp': 0, 'score_sd': 0, 'batches': []}
                   for i in range(1, store_node_num + 1)}
 
-    mean, std_dev = 4000, int(4000 / 2.6)  # 均值, 标准差
+    mean, std_dev = 4000, int(4000 / 4)  # 均值, 标准差
     gaussian_distances = np.random.normal(mean, std_dev, store_node_num)  # 生成 distance
     print(f"min_distance: {min(gaussian_distances)}, max_distance: {max(gaussian_distances)}")
     mean, std_dev = 1000, 160  # 均值, 标准差
@@ -261,7 +262,6 @@ def getBasicBatch(time_max, unit_num, batch_num, time_on_chain, device_value_max
             batched_basic_method[str(cnt)] = batch
             cnt += 1
     return batched_basic_method
-
 
 def getRatioCutMethod(time_max, time_on_chain, unit_num, batch_num, device_value_max, query_points):
     G = G_generate(device_value_max)
@@ -749,21 +749,30 @@ def getResult(found_in_basic_node, found_in_proposed_node, store_node_method_bat
             time_consumed_max_proposed, refuse_cnt_proposed, accept_cnt_proposed, serve_prob_proposed)
 
 
-def writeToDisk(results, unit_num, batch_num, query_points):
+def writeToDisk(results, unit_num, batch_num, query_points, node_num):
     result_temp = {}
     for key, value in results.items():
         if len(results[key]) != 0:
             result_temp[key] = value
     df = pd.DataFrame(result_temp)
     # 将DataFrame写入到Excel文件
-    output_file = f'./0716_distance_batch_1/output_batch_size_{unit_num * batch_num}_query_points_{query_points}_0716_distance_batch_1.xlsx'
+    output_file = f'../0721_store_node/output_batch_size_{unit_num * batch_num}_query_size_20_node_num_{node_num}.xlsx'
     df.to_excel(output_file, index=False)
     print(f'Data has been written to {output_file}')
 
 
+def checkwritefile():
+    test_list = [1, 2, 3]
+    tl = pd.DataFrame(test_list)
+    output_file = f'../0721_store_node/test.xlsx'
+    tl.to_excel(output_file, index=False)
+    print(f'Data has been written to {output_file}')
+
+
 def main():
+    global batched_basic_method, batched_proposed_method, found_in_basic_batch, found_in_proposed_batch, unit_num, batch_num, query_counts
     data_aggregated = load_dataset()
-    store_node = storage_node_generate()
+    checkwritefile()
     results = {
         '1': [],
         '10': [],
@@ -780,23 +789,45 @@ def main():
     }
     device_value_max, time_on_chain, time_max = 20, 20, 3999
     unit_batch_num_list = [(1, 1), (5, 2), (5, 4), (5, 5), (5, 8), (5, 10), (5, 16), (5, 20)]
-    query_points_list = [10, 20, 25, 40, 50, 80, 100]
-    for query_points in query_points_list:
+    query_points = 20
+
+    # 将 query 的信息先记录下来
+    batch_basic_list = []
+    batch_proposed_list = []
+    query_sets_list = []
+    exec_time_list_list = []
+    for i in range(len(unit_batch_num_list)):
+        unit_num, batch_num = unit_batch_num_list[i][0], unit_batch_num_list[i][1]
+        # Basic Method
+        batched_basic_method = getBasicBatch(time_max, unit_num, batch_num, time_on_chain, device_value_max)
+        batch_basic_list.append(batched_basic_method)
+        # RatioCut Method
+        batched_proposed_method, query_sets, exec_time_list\
+            = getRatioCutMethod(time_max, time_on_chain, unit_num, batch_num, device_value_max, query_points)
+
+        batch_proposed_list.append(batched_proposed_method)
+        query_sets_list.append(query_sets)
+
+        exec_time_list_list.append(exec_time_list)
+
+    node_nums = [10, 20, 40, 80, 160, 320]
+    for node_num in node_nums:
         for key, value in results.items():
             results[key].clear()
+        store_node = storage_node_generate(node_num)
         for i in range(len(unit_batch_num_list)):
             unit_num, batch_num = unit_batch_num_list[i][0], unit_batch_num_list[i][1]
-            # Basic Method
-            batched_basic_method = getBasicBatch(time_max, unit_num, batch_num, time_on_chain, device_value_max)
-            # RatioCut Method
-            batched_proposed_method, query_sets, exec_time_list\
-                = getRatioCutMethod(time_max, time_on_chain, unit_num, batch_num, device_value_max, query_points)
-
+            batched_basic_method = batch_basic_list[i]
+            batched_proposed_method = batch_proposed_list[i]
+            query_sets = query_sets_list[i]
+            exec_time_list = exec_time_list_list[i]
             query_counts = 0
             for query_set in query_sets:
                 query_counts += len(query_set)
 
             if unit_num * batch_num != 1:
+                print(f"unit_num: {unit_num}, batch_num: {batch_num}")
+                print(exec_time_list)
                 exec_time_avg = sum(exec_time_list) / len(exec_time_list)
                 print(f"exec time: {exec_time_avg}")
                 results[str(unit_num * batch_num)].append(exec_time_avg)
@@ -865,7 +896,7 @@ def main():
             results[str(unit_num * batch_num)].append(
                 (time_consumed_max_proposed_d, refuse_cnt_proposed_d, accept_cnt_proposed_d, serve_prob_proposed_d))
 
-            writeToDisk(results, unit_num, batch_num, query_points)
+            writeToDisk(results, unit_num, batch_num, query_points, node_num)
 
 
 if __name__ == '__main__':

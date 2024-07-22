@@ -668,9 +668,19 @@ def findBatch(unit_num, batch_num, Query_sets, batched_basic_method, batched_pro
         found_in_basic_batch[idx] = list(set(found_in_basic_batch[idx]))
     for idx in range(len(found_in_proposed_batch)):
         found_in_proposed_batch[idx] = list(set(found_in_proposed_batch[idx]))
+
+    # 将DataFrame写入到Excel文件
+    batches_basic_num_for_query = []
     batches_sum_basic = 0
     for item in found_in_basic_batch:
         batches_sum_basic += len(item)
+        batches_basic_num_for_query.append(len(item))
+        # 将每一个item的len写入到excel表格中
+    df = pd.DataFrame(batches_basic_num_for_query)
+    output_file = f'./output_batch_size_{unit_num * batch_num}_batches.xlsx'
+    df.to_excel(output_file, index=False)
+    print(f'Data has been written to {output_file}')
+
     print(f"basic 的 batch 数量{batches_sum_basic}")
     batches_sum_proposed = 0
     for item in found_in_proposed_batch:
@@ -756,7 +766,7 @@ def writeToDisk(results, unit_num, batch_num, query_points):
             result_temp[key] = value
     df = pd.DataFrame(result_temp)
     # 将DataFrame写入到Excel文件
-    output_file = f'./0716_distance_batch_1/output_batch_size_{unit_num * batch_num}_query_points_{query_points}_0716_distance_batch_1.xlsx'
+    output_file = f'./output_batch_size_{unit_num * batch_num}_batches_{query_points}_0716_distance_batch_1.xlsx'
     df.to_excel(output_file, index=False)
     print(f'Data has been written to {output_file}')
 
@@ -780,7 +790,7 @@ def main():
     }
     device_value_max, time_on_chain, time_max = 20, 20, 3999
     unit_batch_num_list = [(1, 1), (5, 2), (5, 4), (5, 5), (5, 8), (5, 10), (5, 16), (5, 20)]
-    query_points_list = [10, 20, 25, 40, 50, 80, 100]
+    query_points_list = [10]
     for query_points in query_points_list:
         for key, value in results.items():
             results[key].clear()
@@ -807,10 +817,6 @@ def main():
             found_in_basic_batch, found_in_proposed_batch, batches_sum_basic, batches_sum_proposed = (
                 findBatch(unit_num, batch_num, query_sets,
                           batched_basic_method, batched_proposed_method, time_on_chain, device_value_max))
-
-            results[str(unit_num * batch_num)].append((int(batches_sum_basic / query_counts),
-                                                       int(batches_sum_proposed/ query_counts)))
-
             # 方法一: 有信誉有距离
             store_node_method_r_d_batched_basic_method, store_node_method_r_d_batched_proposed_method \
                 = method_r_d(store_node, batched_basic_method, batched_proposed_method)
@@ -822,50 +828,6 @@ def main():
                 = getResult(found_in_basic_node_r_d, found_in_proposed_node_r_d,
                             store_node_method_r_d_batched_basic_method, store_node_method_r_d_batched_proposed_method,
                             query_counts)
-            results[str(unit_num * batch_num)].append((int(nodes_sum_basic / query_counts),
-                                                       int(nodes_sum_proposed / query_counts)))
-            results[str(unit_num * batch_num)].append((time_consumed_avg_basic_r_d, refuse_cnt_basic_r_d,
-                                                       accept_cnt_basic_r_d, serve_prob_basic_r_d))
-            results[str(unit_num * batch_num)].append((time_consumed_avg_proposed_r_d, refuse_cnt_proposed_r_d,
-                                                       accept_cnt_proposed_r_d, serve_prob_proposed_r_d))
-
-            # 方法二:
-            store_node_method_r_batched_basic_method, store_node_method_r_batched_proposed_method\
-                = method_r(store_node, batched_basic_method, batched_proposed_method)
-            found_in_basic_node_r, found_in_proposed_node_r, nodes_sum_basic, nodes_sum_proposed\
-                = getNode(found_in_basic_batch, found_in_proposed_batch, store_node_method_r_batched_basic_method,
-                          store_node_method_r_batched_proposed_method)
-            (time_consumed_max_basic_r, refuse_cnt_basic_r, accept_cnt_basic_r, serve_prob_basic_r,
-             time_consumed_max_proposed_r, refuse_cnt_proposed_r, accept_cnt_proposed_r, serve_prob_proposed_r)\
-                = getResult(found_in_basic_node_r, found_in_proposed_node_r,
-                            store_node_method_r_batched_basic_method, store_node_method_r_batched_proposed_method,
-                            query_counts)
-            results[str(unit_num * batch_num)].append((int(nodes_sum_basic / query_counts),
-                                                       int(nodes_sum_proposed / query_counts)))
-            results[str(unit_num * batch_num)].append(
-                (time_consumed_max_basic_r, refuse_cnt_basic_r, accept_cnt_basic_r, serve_prob_basic_r))
-            results[str(unit_num * batch_num)].append(
-                (time_consumed_max_proposed_r, refuse_cnt_proposed_r, accept_cnt_proposed_r, serve_prob_proposed_r))
-
-            # 方法三:
-            store_node_method_d_batched_basic_method, store_node_method_d_batched_proposed_method\
-                = method_d(store_node, batched_basic_method, batched_proposed_method)
-            found_in_basic_node_d, found_in_proposed_node_d, nodes_sum_basic, nodes_sum_proposed\
-                = getNode(found_in_basic_batch, found_in_proposed_batch, store_node_method_d_batched_basic_method,
-                          store_node_method_d_batched_proposed_method)
-            (time_consumed_max_basic_d, refuse_cnt_basic_d, accept_cnt_basic_d, serve_prob_basic_d,
-             time_consumed_max_proposed_d, refuse_cnt_proposed_d, accept_cnt_proposed_d, serve_prob_proposed_d)\
-                = getResult(found_in_basic_node_d, found_in_proposed_node_d,
-                            store_node_method_d_batched_basic_method, store_node_method_d_batched_proposed_method,
-                            query_counts)
-            results[str(unit_num * batch_num)].append((int(nodes_sum_basic / query_counts),
-                                                       int(nodes_sum_proposed / query_counts)))
-            results[str(unit_num * batch_num)].append(
-                (time_consumed_max_basic_d, refuse_cnt_basic_d, accept_cnt_basic_d, serve_prob_basic_d))
-            results[str(unit_num * batch_num)].append(
-                (time_consumed_max_proposed_d, refuse_cnt_proposed_d, accept_cnt_proposed_d, serve_prob_proposed_d))
-
-            writeToDisk(results, unit_num, batch_num, query_points)
 
 
 if __name__ == '__main__':
