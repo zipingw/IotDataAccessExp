@@ -9,8 +9,8 @@ def loadData(input_file):
 def strip_split(data_string):
     return data_string.strip('()').split(',')
 
-def data_preprocess():
-    data = loadData()
+def data_preprocess(input_file):
+    data = loadData(input_file)
     print(data)
 
     for column in data.columns:
@@ -18,12 +18,12 @@ def data_preprocess():
         batch_nums_1 = data.at[1, column]
 
 
-def consensus():
+def consensus(input_file):
     map = {0: "1", 1: "10", 2: "20", 3: "25", 4: "40", 5: "50", 6: "80", 7: "100"}
 
     file_path = 'basic_results/consensus.xlsx'
     df = pd.read_excel(file_path)
-    data = loadData()
+    data = loadData(input_file)
     print(data)
     for index, row in df.iterrows():
         if pd.isna(row['tTimeChain']):
@@ -94,7 +94,7 @@ def ratio_cut():
 def totally():
     file_path = 'basic_results/totally.xlsx'
     df = pd.read_excel(file_path)
-    input_file_path = './0716_distance_batch_1/output_batch_size_100_query_points_10_0716_distance_batch_1.xlsx'
+    input_file_path = './0723_pd/output_batch_size_100_query_points_10.xlsx'
     data = loadData(input_file_path)
     print(data)
 
@@ -168,10 +168,11 @@ def totally():
 
 def main():
     # data_preprocess()
-    # consensus()
+    consensus("./0728_pd/output_batch_size_100_query_points_20.xlsx")
     # ratio_cut()
-    totally()
+    # totally()
     return 0
+
 
 if __name__ == '__main__':
     main()

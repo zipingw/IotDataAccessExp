@@ -61,10 +61,11 @@ def storage_node_generate():
     # 模拟存储节点
     # 每个store_node 包含3个信息，distance|storage space|reputation, 并计算得到一个score
     store_node_num = 50
-    store_node = {i: {'distance': 0, 'storage space': 0, 'probability': 0, 'score_sp': 0, 'score_sd': 0, 'batches': []}
+    store_node = {i: {'distance': 0, 'std_dis': 0, 'storage space': 0, 'probability': 0, 'score_sp': 0, 'score_sd': 0,
+                      'score_pd': 0, 'batches': []}
                   for i in range(1, store_node_num + 1)}
 
-    mean, std_dev = 4000, int(4000 / 2.6)  # 均值, 标准差
+    mean, std_dev = 4000, int(4000 / 4)  # 均值, 标准差
     gaussian_distances = np.random.normal(mean, std_dev, store_node_num)  # 生成 distance
     print(f"min_distance: {min(gaussian_distances)}, max_distance: {max(gaussian_distances)}")
     mean, std_dev = 1000, 160  # 均值, 标准差
@@ -78,8 +79,10 @@ def storage_node_generate():
     # 循环遍历每个节点，为其设置高斯分布的距离
     for key, node in store_node.items():
         node['distance'] = gaussian_distances[key - 1]
+        node['std_dis'] = (node['distance'] - min(gaussian_distances)) / (max(gaussian_distances) - min(gaussian_distances))
         node['storage space'] = gaussian_storage_spaces[key - 1]
         node['probability'] = gaussian_probability[key - 1]
+        node['score_pd'] =  node['std_dis'] * 0.5 - node['probability'] * 0.5
         # node['score_sp'] = node['storage space'] + alpha_probability * node['probability']
         node['score_sp'] = alpha_probability * node['probability']
         # node['score_sd'] = node['storage space'] - alpha_distance * node['distance']
@@ -134,7 +137,7 @@ def truncated_normal(mean, std_dev, low, high):
     return truncnorm(a, b, loc=mean, scale=std_dev)
 
 
-def generateQuery(num_queries, unit_num, batch_num, query_points, time_low, time_high, device_value_max):
+def generateQuery(num_queries, query_points, time_low, time_high, device_value_max):
 
 
     device_low, device_high = 1, device_value_max
@@ -190,7 +193,7 @@ def generateQuery(num_queries, unit_num, batch_num, query_points, time_low, time
 
             if 1 <= area <= query_points + 5 and is_overlap_points_less_enough(time_lower_bound, time_upper_bound,
                                                                                device_lower_bound, device_upper_bound,
-                                                                               queries, max(5, int(unit_num * batch_num / 10))):
+                                                                               queries, 5):
                 bounds = [(time_lower_bound, time_upper_bound), (device_lower_bound, device_upper_bound)]
                 break
             if tried == 20:
@@ -263,13 +266,23 @@ def getBasicBatch(time_max, unit_num, batch_num, time_on_chain, device_value_max
     return batched_basic_method
 
 
-def getRatioCutMethod(time_max, time_on_chain, unit_num, batch_num, device_value_max, query_points):
+def getQuerySets(time_max, time_on_chain, query_points, num_queries, device_value_max):
+    Query_sets = []
+    for start_time in range(0, time_max, time_on_chain):
+        end_time = start_time + time_on_chain
+        query_set = generateQuery(num_queries, query_points,
+                                  start_time, end_time - 1, device_value_max)
+        # 将每段on_chain时间内生成的query_set整合到循环外部一个总的Query集合中
+        Query_sets.append(copy.deepcopy(query_set))
+    return Query_sets
+
+def getRatioCutMethod(time_max, time_on_chain, unit_num, batch_num, device_value_max, Query_sets):
     G = G_generate(device_value_max)
     init_edge_weights(G)
     batched_proposed_method = {}
     cnt = 0
     # 采样记录所有的Query
-    Query_sets = []
+    query_set_cnt = 0
     exec_time_list = []
 
     for start_time in range(0, time_max, time_on_chain):
@@ -291,31 +304,23 @@ def getRatioCutMethod(time_max, time_on_chain, unit_num, batch_num, device_value
         # 需要生成Query 并更新Device图 再进行分类，最后根据谱聚类结果 按照10个unit为一组打包为Batch
         alpha = 0.8
         beta = 0.5  # beta 比较适合 * 一个信息表示该此访问的 强度
-        num_queries = 10
-        # query_points 从10 一直调整到 100 观察实验结果的变化
-        # num_queries = int(time_on_chain * device_value_max / unit_num / batch_num / 2) # 16 / 2
-        # 本次生成的Query用于更新下一次的Device
-        # if unit_num * batch_num == 1:
-        #     query_set = genQueryForBatch1(num_queries, start_time, end_time - 1, device_value_max)
-        # else:
-        query_set = generateQuery(num_queries, unit_num, batch_num, query_points,
-                                  start_time, end_time - 1, device_value_max)
-        # 将每段on_chain时间内生成的query_set整合到循环外部一个总的Query集合中
-        Query_sets.append(copy.deepcopy(query_set))
+
         # 更新Device, 从第二批数据开始，按照query更新
         if not (unit_num == 1 and batch_num == 1):
             if start_time != 0:
                 # 记录开始时间
                 ratioCut_start_time = time_module.time()
                 # 迭代时query的数量影响不大，关键是查询时要控制 访问的数据点数 少一些 1/2 1/3
-                for query in Query_sets[-1]:
-                    queried_nodes = [node for node, attributes in G.nodes(data=True) if
-                                     attributes['device_id'] >= query[1][0] and attributes['device_id'] <= query[1][1]]
-                    for u, v, attrs in G.edges(data=True):
-                        if u in queried_nodes and v in queried_nodes:
-                            attrs['weight'] = alpha * G.edges[u, v]['weight'] + beta * G.edges[v, u]['weight']
-                        else:
-                            attrs['weight'] = alpha * G.edges[u, v]['weight']
+                if query_set_cnt < len(Query_sets):
+                    for query in Query_sets[query_set_cnt]:
+                        query_set_cnt += 1
+                        queried_nodes = [node for node, attributes in G.nodes(data=True) if
+                                         attributes['device_id'] >= query[1][0] and attributes['device_id'] <= query[1][1]]
+                        for u, v, attrs in G.edges(data=True):
+                            if u in queried_nodes and v in queried_nodes:
+                                attrs['weight'] = alpha * G.edges[u, v]['weight'] + beta * G.edges[v, u]['weight']
+                            else:
+                                attrs['weight'] = alpha * G.edges[u, v]['weight']
             # 谱聚类
             Adjacent = nx.adjacency_matrix(G)  # 获取邻接矩阵
             total_sum = np.sum(Adjacent.data)  # 对稀疏矩阵中的每个非零元素进行标准化
@@ -438,12 +443,12 @@ def method_r_d(store_node, batched_basic_method, batched_proposed_method):
     store_node_method_r_d_batched_basic_method = copy.deepcopy(store_node_method_r_d)
     for key, batch in batched_basic_method.items():
         # 要选取一个store node存储
-        sorted_nodes_r_d = sorted(store_node_method_r_d_batched_basic_method.items(), key=lambda x: x[1]['score_sd'],
+        sorted_nodes_r_d = sorted(store_node_method_r_d_batched_basic_method.items(), key=lambda x: x[1]['score_pd'],
                                   reverse=False)
         # 从得分前 10 的节点中随机选择一个节点
-        top_ten_nodes_r_d = sorted_nodes_r_d[:10]
-
-        saved_flag = False
+        top_nodes_r_d = sorted_nodes_r_d[:3]
+        store_node_method_r_d_batched_basic_method[random.choice(top_nodes_r_d)[0]]['batches'].append((key, batch))
+        '''saved_flag = False
         for node in top_ten_nodes_r_d:
             if saved_flag:
                 break
@@ -455,16 +460,17 @@ def method_r_d(store_node, batched_basic_method, batched_proposed_method):
                 saved_flag = True
         if not saved_flag:
             # 10 个都没命中，则存入 rank 第一的 node 中
-            store_node_method_r_d_batched_basic_method[top_ten_nodes_r_d[0][0]]['batches'].append((key, batch))
+            store_node_method_r_d_batched_basic_method[top_ten_nodes_r_d[0][0]]['batches'].append((key, batch))'''
 
     store_node_method_r_d_batched_proposed_method = copy.deepcopy(store_node_method_r_d)
     for key, batch in batched_proposed_method.items():
         # 要选取一个store node存储
-        sorted_nodes = sorted(store_node_method_r_d_batched_proposed_method.items(), key=lambda x: x[1]['score_sd'],
+        sorted_nodes = sorted(store_node_method_r_d_batched_proposed_method.items(), key=lambda x: x[1]['score_pd'],
                               reverse=False)  # 考虑 Distance 升序，距离小的优先
         # 从得分前 10 的节点中随机选择一个节点
-        top_ten_nodes = sorted_nodes[:10]
-        saved_flag = False
+        top_nodes = sorted_nodes[:3]
+        store_node_method_r_d_batched_proposed_method[random.choice(top_nodes)[0]]['batches'].append((key, batch))
+        '''saved_flag = False
         for node in top_ten_nodes:
             if saved_flag:
                 break
@@ -476,57 +482,32 @@ def method_r_d(store_node, batched_basic_method, batched_proposed_method):
                 saved_flag = True
         if not saved_flag:
             # 10 个都没命中，则存入 rank 第一的 node 中
-            store_node_method_r_d_batched_proposed_method[top_ten_nodes[0][0]]['batches'].append((key, batch))
+            store_node_method_r_d_batched_proposed_method[top_ten_nodes[0][0]]['batches'].append((key, batch))'''
     return store_node_method_r_d_batched_basic_method, store_node_method_r_d_batched_proposed_method
 
 
 def method_r(store_node, batched_basic_method, batched_proposed_method):
     store_node_method_r = copy.deepcopy(store_node)
-    store_node_method_r_batched_basic_method = copy.deepcopy(store_node_method_r)
 
+    store_node_method_r_batched_basic_method = copy.deepcopy(store_node_method_r)
     for key, batch in batched_basic_method.items():
         # 要选取一个store node存储
         sorted_nodes_r = sorted(store_node_method_r_batched_basic_method.items(), key=lambda x: x[1]['score_sp'],
                                 reverse=True)  # Ture 指定为降序排序
 
         # 从得分前 10 的节点中随机选择一个节点
-        top_ten_nodes_r = sorted_nodes_r[:10]
-        saved_flag = False
-        for node in top_ten_nodes_r:
-            if saved_flag:
-                break
-            get_pro = node[1]['probability']
-            # 得到命中概率
-            if probabilistic_true(get_pro):
-                # 若命中，则存入
-                store_node_method_r_batched_basic_method[node[0]]['batches'].append((key, batch))
-                saved_flag = True
-
-        if not saved_flag:
-            # 10 个都没命中，则存入 rank 第一的 node 中
-            store_node_method_r_batched_basic_method[top_ten_nodes_r[0][0]]['batches'].append((key, batch))
+        top_ten_nodes_r = sorted_nodes_r[:3]
+        store_node_method_r_batched_basic_method[random.choice(top_ten_nodes_r)[0]]['batches'].append((key, batch))
 
     store_node_method_r_batched_proposed_method = copy.deepcopy(store_node_method_r)
-
     for key, batch in batched_proposed_method.items():
         # 要选取一个store node存储
         sorted_nodes_r = sorted(store_node_method_r_batched_proposed_method.items(), key=lambda x: x[1]['score_sp'],
                                 reverse=True)
         # 从得分前 10 的节点中随机选择一个节点
-        top_ten_nodes_r = sorted_nodes_r[:10]
-        saved_flag = False
-        for node in top_ten_nodes_r:
-            if saved_flag:
-                break
-            get_pro = node[1]['probability']
-            # 得到命中概率
-            if probabilistic_true(get_pro):
-                # 若命中，则存入
-                store_node_method_r_batched_proposed_method[node[0]]['batches'].append((key, batch))
-                saved_flag = True
-        if not saved_flag:
-            # 10 个都没命中，则存入 rank 第一的 node 中
-            store_node_method_r_batched_proposed_method[top_ten_nodes_r[0][0]]['batches'].append((key, batch))
+        top_ten_nodes_r = sorted_nodes_r[:3]
+        store_node_method_r_batched_proposed_method[random.choice(top_ten_nodes_r)[0]]['batches'].append((key, batch))
+
     return store_node_method_r_batched_basic_method, store_node_method_r_batched_proposed_method
 
 
@@ -540,7 +521,7 @@ def method_d(store_node, batched_basic_method, batched_proposed_method):
         sorted_nodes_d = sorted(store_node_method_d_batched_basic_method.items(), key=lambda x: x[1]['score_sd'],
                                 reverse=False)  # 升序排序，距离越小越优先
         # 从得分前 10 的节点中随机选择一个节点
-        top_ten_nodes = sorted_nodes_d[:10]
+        top_ten_nodes = sorted_nodes_d[:3]
         random_choice_node = random.choice(top_ten_nodes)
         store_node_method_d_batched_basic_method[random_choice_node[0]]['batches'].append((key, batch))
 
@@ -551,7 +532,7 @@ def method_d(store_node, batched_basic_method, batched_proposed_method):
         sorted_nodes_d = sorted(store_node_method_d_batched_proposed_method.items(), key=lambda x: x[1]['score_sd'],
                                 reverse=False)  # 升序排序，距离越小越优先
         # 从得分前 10 的节点中随机选择一个节点
-        top_ten_nodes = sorted_nodes_d[:10]
+        top_ten_nodes = sorted_nodes_d[:3]
         random_choice_node = random.choice(top_ten_nodes)
         store_node_method_d_batched_proposed_method[random_choice_node[0]]['batches'].append((key, batch))
 
@@ -756,7 +737,9 @@ def writeToDisk(results, unit_num, batch_num, query_points):
             result_temp[key] = value
     df = pd.DataFrame(result_temp)
     # 将DataFrame写入到Excel文件
-    output_file = f'./0716_distance_batch_1/output_batch_size_{unit_num * batch_num}_query_points_{query_points}_0716_distance_batch_1.xlsx'
+    # output_file = f'./0716_distance_batch_1/output_batch_size_{unit_num * batch_num}_query_points_{query_points}_0716_distance_batch_1.xlsx'
+    # output_file = f'./0723_more_data/output_batch_size_{unit_num * batch_num}_query_points_{query_points}.xlsx'
+    output_file = f'./0728_pd/output_batch_size_{unit_num * batch_num}_query_points_{query_points}.xlsx'
     df.to_excel(output_file, index=False)
     print(f'Data has been written to {output_file}')
 
@@ -778,10 +761,13 @@ def main():
         '90': [],
         '100': [],
     }
-    device_value_max, time_on_chain, time_max = 20, 20, 3999
+    device_value_max, time_on_chain, time_max = 20, 20, 7999
     unit_batch_num_list = [(1, 1), (5, 2), (5, 4), (5, 5), (5, 8), (5, 10), (5, 16), (5, 20)]
-    query_points_list = [10, 20, 25, 40, 50, 80, 100]
+    # query_points_list = [10, 20, 25, 40, 50, 80, 100]
+    query_points_list = [10, 20]
+    num_queries = 10
     for query_points in query_points_list:
+        Query_sets = getQuerySets(time_max, time_on_chain, query_points, num_queries, device_value_max)
         for key, value in results.items():
             results[key].clear()
         for i in range(len(unit_batch_num_list)):
@@ -790,7 +776,7 @@ def main():
             batched_basic_method = getBasicBatch(time_max, unit_num, batch_num, time_on_chain, device_value_max)
             # RatioCut Method
             batched_proposed_method, query_sets, exec_time_list\
-                = getRatioCutMethod(time_max, time_on_chain, unit_num, batch_num, device_value_max, query_points)
+                = getRatioCutMethod(time_max, time_on_chain, unit_num, batch_num, device_value_max, Query_sets)
 
             query_counts = 0
             for query_set in query_sets:

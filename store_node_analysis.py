@@ -3,12 +3,12 @@ import pandas as pd
 
 def loadData():
     # Load the Excel file into a DataFrame
-    input_file_10 = './0721_store_node/output_batch_size_100_query_size_20_node_num_10.xlsx'
-    input_file_20 = './0721_store_node/output_batch_size_100_query_size_20_node_num_20.xlsx'
-    input_file_40 = './0721_store_node/output_batch_size_100_query_size_20_node_num_40.xlsx'
-    input_file_80 = './0721_store_node/output_batch_size_100_query_size_20_node_num_80.xlsx'
-    input_file_160 = './0721_store_node/output_batch_size_100_query_size_20_node_num_160.xlsx'
-    input_file_320 = './0721_store_node/output_batch_size_100_query_size_20_node_num_320.xlsx'
+    input_file_10 = './0724_store_node/output_batch_size_20_query_size_20_node_num_10.xlsx'
+    input_file_20 = './0724_store_node/output_batch_size_20_query_size_20_node_num_20.xlsx'
+    input_file_40 = './0724_store_node/output_batch_size_20_query_size_20_node_num_40.xlsx'
+    input_file_80 = './0724_store_node/output_batch_size_20_query_size_20_node_num_80.xlsx'
+    input_file_160 = './0724_store_node/output_batch_size_20_query_size_20_node_num_160.xlsx'
+    input_file_320 = './0724_store_node/output_batch_size_20_query_size_20_node_num_320.xlsx'
     df_10 = pd.read_excel(input_file_10)
     df_20 = pd.read_excel(input_file_20)
     df_40 = pd.read_excel(input_file_40)
@@ -23,22 +23,24 @@ def strip_split(data_string):
 
 
 def totally():
-    file_path = './store_node_results/totally.xlsx'
+    file_path = './store_node_results/totally_0724pd.xlsx'
     df = pd.read_excel(file_path)
     data_list = loadData()
-    ratio_cut_time = data_list[0].at[0, "20"]
+    print(data_list[0])
+    ratio_cut_time = data_list[0].iloc[0, 0]
+
     lsh_time = 0.0207320173841156
 
     proposed_r_d_trans_time = {"10": 0, "20": 0, "40": 0, "80": 0, "160": 0, "320": 0}
     start = 10
     for index, data_df in enumerate(data_list):
-        proposed_r_d_trans_time[str(start * (pow(2, index)))] = float(strip_split(data_df.at[4, "20"])[0])
+        proposed_r_d_trans_time[str(start * (pow(2, index)))] = float(strip_split(data_df.iloc[4, 0])[0])
     print(proposed_r_d_trans_time)
 
     basic_r_time = {"10": 0, "20": 0, "40": 0, "80": 0, "160": 0, "320": 0}
     start = 10
     for index, data_df in enumerate(data_list):
-        basic_r_time[str(start * (pow(2, index)))] = float(strip_split(data_df.at[6, "20"])[0])
+        basic_r_time[str(start * (pow(2, index)))] = float(strip_split(data_df.iloc[6, 0])[0])
     print(basic_r_time)
 
     for column_name, column_data in df.items():
@@ -60,9 +62,9 @@ def totally():
             df.at[0, column_name] = 10000 / 2 * 6.33 + basic_r_time[store_node_num] * 2 + 6.33 + 0.00119209289550781 + lsh_time
             # 计算存储
             df.at[1, column_name] = lsh_time * 2 + 6.33 + basic_r_time[store_node_num] + 15.46
-    output_file_path = './store_node_results/totally.xlsx'
-    df.to_excel(output_file_path, index=False)
-    print(f"Modified Excel file has been saved to {output_file_path}")
+
+    df.to_excel(file_path, index=False)
+    print(f"Modified Excel file has been saved to {file_path}")
 
     return 0
 
